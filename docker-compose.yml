@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  postgres-ml:
+    image: postgres:15-alpine
+    container_name: ml-postgres
+    environment:
+      POSTGRES_DB: mldb
+      POSTGRES_USER: mluser
+      POSTGRES_PASSWORD: mlpassword
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres-ml-data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mluser -d mldb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ml-network
+
+  ml-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ml-service
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://mluser:mlpassword@postgres-ml:5432/mldb
+      PORT: 5015
+    ports:
+      - "5015:5015"
+    volumes:
+      - ./src:/app/src
+      - ./models:/app/models
+      - ./training:/app/training
+    depends_on:
+      postgres-ml:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - ml-network
+
+volumes:
+  postgres-ml-data:
+
+networks:
+  ml-network:
+    driver: bridge
+
